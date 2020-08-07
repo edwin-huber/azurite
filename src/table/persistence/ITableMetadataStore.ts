@@ -51,9 +51,9 @@ export default interface ITableMetadataStore {
   ): Promise<void>;
   mergeTableEntity(
     context: Context,
-    table: string,
-    partitionKey: string,
-    rowKey: string
+    tableName: string,
+    accountName: string,
+    entity: IEntity
   ): Promise<void>;
   deleteTableEntity(
     context: Context,

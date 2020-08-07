@@ -178,4 +178,47 @@ describe("table Entity APIs test", () => {
       }
     );
   });
+
+  it("Should merge Entity with eTag = *, @loki", done => {
+    // https://docs.microsoft.com/en-us/rest/api/storageservices/insert-entity
+    const entityV1 = {
+      PartitionKey: "part1",
+      RowKey: "row1",
+      myValue: "value1"
+    };
+    requestOverride.headers = {
+      Prefer: "return-content",
+      accept: "application/json;odata=fullmetadata"
+    };
+    tableService.insertEntity(
+      tableName,
+      entityV1,
+      (insertError, insertResult, insertResponse) => {
+        if (!insertError) {
+          const entityV2 = {
+            PartitionKey: "part1",
+            RowKey: "row1",
+            myValue: "value2",
+            myOtherValue: "other"
+          };
+          tableService.mergeEntity(
+            tableName,
+            entityV2,
+            (mergeError, mergeResult, mergeResponse) => {
+              if (!mergeError) {
+                assert.equal(mergeResponse.statusCode, 204);
+                done();
+              } else {
+                assert.ifError(mergeError);
+                done();
+              }
+            }
+          );
+        } else {
+          assert.ifError(insertError);
+          done();
+        }
+      }
+    );
+  });
 });

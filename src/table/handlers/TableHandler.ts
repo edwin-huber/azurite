@@ -263,22 +263,28 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
     options: Models.TableMergeEntityOptionalParams,
     context: Context
   ): Promise<Models.TableMergeEntityResponse> {
-    // e.g
-    // const tableCtx = new TableStorageContext(context);
-    // const accountName = tableCtx.account;
-    // const tableName = tableCtx.tableName; // Get tableName from context
-    // const partitionKey = tableCtx.partitionKey!; // Get partitionKey from context
-    // const rowKey = tableCtx.rowKey!; // Get rowKey from context
-    // const entity = options.tableEntityProperties!;
-    // return {
-    //   statusCode: 204,
-    //   date: tableCtx.startTime,
-    //   clientRequestId: "clientRequestId",
-    //   requestId: "requestId",
-    //   version: "version"
-    // };
-    // TODO
-    throw new NotImplementedError();
+    const tableCtx = new TableStorageContext(context);
+    const accountName = tableCtx.account;
+    const tableName = tableCtx.tableName; // Get tableName from context
+    const partitionKey = tableCtx.partitionKey!; // Get partitionKey from context
+    const rowKey = tableCtx.rowKey!; // Get rowKey from context
+    const entity = options.tableEntityProperties! as IEntity;
+
+    this.CheckRowAndPartition(partitionKey, rowKey, context);
+    this.CheckPrecondition(entity.eTag, context);
+    await this.metadataStore.mergeTableEntity(
+      context,
+      tableName!,
+      accountName!,
+      entity as IEntity
+    );
+    return {
+      statusCode: 204,
+      date: tableCtx.startTime,
+      clientRequestId: "clientRequestId",
+      requestId: "requestId",
+      version: "version"
+    };
   }
 
   public async deleteEntity(
@@ -294,12 +300,8 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
     const partitionKey = tableCtx.partitionKey!; // Get partitionKey from context
     const rowKey = tableCtx.rowKey!; // Get rowKey from context
 
-    if (!partitionKey || !rowKey) {
-      throw StorageErrorFactory.getPropertiesNeedValue(context);
-    }
-    if (ifMatch === "" || ifMatch === undefined) {
-      throw StorageErrorFactory.getPreconditionFailed(context);
-    }
+    this.CheckRowAndPartition(partitionKey, rowKey, context);
+    this.CheckPrecondition(ifMatch, context);
     // currently the props are not coming through as args, so we take them from the table context
     await this.metadataStore.deleteTableEntity(
       context,
@@ -441,5 +443,21 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
     // const tableName = tableCtx.tableName; // Get tableName from context
     // TODO
     throw new NotImplementedError();
+  }
+
+  private CheckPrecondition(ifMatch: string, context: Context) {
+    if (ifMatch === "" || ifMatch === undefined) {
+      throw StorageErrorFactory.getPreconditionFailed(context);
+    }
+  }
+
+  private CheckRowAndPartition(
+    partitionKey: string,
+    rowKey: string,
+    context: Context
+  ) {
+    if (!partitionKey || !rowKey) {
+      throw StorageErrorFactory.getPropertiesNeedValue(context);
+    }
   }
 }

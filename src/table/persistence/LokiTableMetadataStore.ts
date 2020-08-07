@@ -98,17 +98,9 @@ export default class LokiTableMetadataStore implements ITableMetadataStore {
     name: string,
     accountName: string
   ): Promise<void> {
-    const uniqueTableName = this.getUniqueTableCollectionName(
-      accountName,
-      name
-    );
-    const tableColl = this.db.getCollection(uniqueTableName);
-    // delete the collection / table
-    if (tableColl != null) {
-      this.db.removeCollection(uniqueTableName);
-    } else {
-      throw StorageErrorFactory.getTableNotFound(context);
-    }
+    const tableColl = this.GetTableCollection(accountName, name, context);
+    this.db.removeCollection(tableColl.name);
+
     // remove table reference from collection registry
     const coll = this.db.getCollection(this.TABLE_COLLECTION);
     const doc = coll.findOne({
@@ -154,11 +146,36 @@ export default class LokiTableMetadataStore implements ITableMetadataStore {
   public async mergeTableEntity(
     context: Context,
     table: string,
-    partitionKey: string,
-    rowKey: string
+    accountName: string,
+    entity: IEntity
   ): Promise<void> {
-    // TODO
-    throw new NotImplementedError();
+    const tableColl = this.GetTableCollection(accountName, table, context);
+    // Find entity
+    const doc = tableColl.findOne({
+      PartitionKey: entity.PartitionKey,
+      RowKey: entity.RowKey
+    });
+    if (doc === null) {
+      throw StorageErrorFactory.getEntityNotFound(context);
+    }
+
+    if (entity.eTag !== "*" && entity.eTag !== doc.etag) {
+      throw StorageErrorFactory.getPreconditionFailed(context);
+    }
+
+    // check content type if we need to update according to content type <- Should be in calling function
+    /*he Merge Entity operation sends the entity to be updated as an
+    OData entity, which may be either a JSON or an Atom feed. For more information,
+     see Inserting and Updating Entities.
+     https://docs.microsoft.com/en-us/rest/api/storageservices/inserting-and-updating-entities
+    */
+    // Update the properties / merge
+    const mergedDoc: IEntity = { ...doc, ...entity };
+    // clean up metadata props
+    // mergedDoc.lastModifiedTime = // now?
+    // save back to collection
+    tableColl.update(mergedDoc);
+    // return the result
   }
 
   public async deleteTableEntity(
@@ -169,12 +186,7 @@ export default class LokiTableMetadataStore implements ITableMetadataStore {
     rowKey: string,
     etag: string
   ): Promise<void> {
-    const tableColl = this.db.getCollection(
-      this.getUniqueTableCollectionName(accountName, tableName)
-    );
-    if (!tableColl) {
-      throw StorageErrorFactory.getTableNotExist(context);
-    }
+    const tableColl = this.GetTableCollection(accountName, tableName, context);
 
     if (partitionKey !== undefined && rowKey !== undefined) {
       const doc = tableColl.findOne({
@@ -272,5 +284,19 @@ export default class LokiTableMetadataStore implements ITableMetadataStore {
     tableName: string
   ): string {
     return `${accountName}$${tableName}`;
+  }
+
+  private GetTableCollection(
+    accountName: string,
+    tableName: string,
+    context: Context
+  ) {
+    const tableColl = this.db.getCollection(
+      this.getUniqueTableCollectionName(accountName, tableName)
+    );
+    if (!tableColl) {
+      throw StorageErrorFactory.getTableNotFound(context);
+    }
+    return tableColl;
   }
 }
