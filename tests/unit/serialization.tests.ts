@@ -17,7 +17,8 @@ describe("batch serialization and deserialization unit tests, not API integratio
     assert.equal(batchOperationArray[0].batchType, BatchType.table);
     assert.equal(
       batchOperationArray[0].batchOperationType,
-      BatchOperationType.insert
+      BatchOperationType.insert,
+      "wrong operation type parsed"
     );
   });
 });

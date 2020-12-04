@@ -12,6 +12,7 @@ export enum BatchOperationType {
   merge = "merge"
 }
 
+// Holder for batch operations
 export default class BatchOperation {
   public batchType: BatchType;
   public batchOperationType: BatchOperationType;
