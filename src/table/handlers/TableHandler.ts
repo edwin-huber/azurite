@@ -15,7 +15,7 @@ import {
   NO_METADATA_ACCEPT,
   RETURN_CONTENT,
   RETURN_NO_CONTENT,
-  TABLE_API_VERSION,
+  TABLE_API_VERSION
 } from "../utils/constants";
 import BaseHandler from "./BaseHandler";
 
@@ -29,6 +29,11 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
   ): Promise<Models.TableBatchResponse> {
     const tableCtx = new TableStorageContext(context);
     // TODO: Implement batch operation logic here
+    // We can have table or blob batches
+    // Generic Interface  DeserializeBatch (body: NodeJS.ReadableStream) returns (operations: iBatchOperation)
+    // Explicit DeserializeBatchTable(body) : <text> -> <array of <TableBatchOperation>>
+    // Check object array / List for valid content as per rules (do we need a rules / validation engine?)
+    // execute batch commands as per table logic
     return {
       requestId: tableCtx.contextID,
       version: TABLE_API_VERSION,

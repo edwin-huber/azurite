@@ -510,4 +510,40 @@ describe("table Entity APIs test", () => {
   // either succeed or fail. Operations are processed in the order they are specified in the change set.
   // The Table service does not support linking operations in a change set.
   // The Table service supports a maximum of 100 operations in a change set.
+
+  // Implementation help:
+  // https://docs.microsoft.com/en-us/rest/api/storageservices/blob-batch
+  // https://docs.microsoft.com/en-us/rest/api/storageservices/performing-entity-group-transactions
+
+  // Step 1. create Table handler for "POST" to table service root with $batch option.
+  // Step 2. Handle "De-Serialization of batch requests" via example from JS SDK
+  // using shared module (to be available for blob)
+  // https://github.com/Azure/azure-sdk-for-js/blob/master/sdk/tables/data-tables/src/TableBatch.ts
+
+  // Step 3. Validate request conforms to table service batch restrictions
+  // see : https://docs.microsoft.com/en-us/rest/api/storageservices/performing-entity-group-transactions
+
+  // Step 4. For each transaction:
+  //                 Execute entity transaction via Hanlder & Loki Table Metadata store
+  //                 Store results
+  // NOTE:
+  /*
+    1. A change set is a group of one or more insert, update, or delete operations.
+    2. A batch is a container of operations, including one or more change sets and query operations.
+    3. An individual request within the change set is identical to a request made when that operation
+       is being called by itself.
+    4. The Table service supports only a single change set within a batch. The change set can include
+       multiple insert, update, and delete operations.
+    5. If a batch includes more than one change set, the first change set will be processed by the
+       service, and additional change sets will be rejected with status code 400 (Bad Request).
+    6. Multiple operations against a single entity are not permitted within a change set.
+    7. A query operation is not permitted within a batch that contains insert, update, or delete
+       operations; it must be submitted singly in the batch.ded
+    8. Operations within a change set are processed atomically; that i^s, all operations in the change
+       set either succeed or fail. Operations are processed in the order they are specified in the change set.
+    9. The Table service does not support linking operations in a change set.
+    10. ded
+  */
+
+  // Step 5. Return results to caller
 });
