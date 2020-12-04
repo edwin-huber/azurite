@@ -1,5 +1,7 @@
-import BatchOperation from "./BatchOperation";
-import BatchType from "./BatchOperation";
+import BatchOperation, {
+  BatchOperationType,
+  BatchType
+} from "./BatchOperation";
 
 export default class BatchSubResponse {
   public batchType: BatchType;
@@ -7,5 +9,10 @@ export default class BatchSubResponse {
 
   public constructor(_batchType: BatchType) {
     this.batchType = _batchType;
+    const operation = new BatchOperation(
+      this.batchType,
+      BatchOperationType.unknown
+    );
+    this.batchOperations = [operation];
   }
 }
