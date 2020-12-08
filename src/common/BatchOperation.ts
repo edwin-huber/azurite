@@ -15,12 +15,10 @@ export enum BatchOperationType {
 // Holder for batch operations
 export default class BatchOperation {
   public batchType: BatchType;
-  public batchOperationType: BatchOperationType;
-  public constructor(
-    _batchType: BatchType,
-    _batchOperationType: BatchOperationType
-  ) {
+  public verb?: string;
+  public path?: string;
+  public batchOperationType?: BatchOperationType;
+  public constructor(_batchType: BatchType) {
     this.batchType = _batchType;
-    this.batchOperationType = _batchOperationType;
   }
 }
