@@ -42,22 +42,25 @@ export class TableBatchSerialization implements IBatchSerialization {
     const subRequestPrefix = `--${changeSetBoundary}${HTTP_LINE_ENDING}${contentTypeHeaderString}: application/http${HTTP_LINE_ENDING}${contentTransferEncodingString}: binary`;
     const splitBody = batchRequestsString.split(subRequestPrefix);
 
-    // dropping first and last elements as boundaries
-    const subRequests = splitBody.slice(1, splitBody.length - 1);
+    // dropping first element as boundary
+    const subRequests = splitBody.slice(1, splitBody.length);
 
     const batchRequests: BatchOperation[] = subRequests.map(subRequest => {
       // GET = Query, POST = Insert, PUT = Update, MERGE = Merge, DELETE = Delete
       const requestType = subRequest.match(
         "(GET|POST|PUT|MERGE|INSERT|DELETE)"
       );
+      const operation = new BatchOperation(BatchType.table);
+
+      // extract HTTP Verb
       if (requestType === null || requestType.length < 2) {
         throw new Error(
           `Couldn't extract verb from sub-Request:\n ${subRequest}`
         );
       }
-      const operation = new BatchOperation(BatchType.table);
       operation.verb = requestType[0];
 
+      // extract request path - regex needs improving
       const requestPath = subRequest.match(
         /http+s?.+(table\.core\.windows\.net)(\/\S*\s+)/
       );
@@ -66,8 +69,27 @@ export class TableBatchSerialization implements IBatchSerialization {
           `Couldn't extract path from sub-Request:\n ${subRequest}`
         );
       }
-      // tslint:disable-next-line: no-console
-      console.log(requestPath[2]);
+      operation.path = requestPath[2];
+
+      // Assuming / defaulting to Content Type of application/json based on:
+      // 2020 12 09 - https://docs.microsoft.com/en-us/rest/api/storageservices/performing-entity-group-transactions
+      // JSON is the recommended payload format, and is the only format supported for versions 2015-12-11 and later.
+
+      // ToDo: defaulting to odata=minimalmetadata will need to check if
+      // we need to support other metadata options
+
+      // ToDo: check where to validate and act upon Prefer:``return-no-content header
+
+      const jsonOperationBody = subRequest.match(/{+.+}+/);
+      if (jsonOperationBody === null || jsonOperationBody.length < 1) {
+        throw new Error(
+          `Couldn't extract path from sub-Request:\n ${subRequest}`
+        );
+      }
+      operation.jsonRequestBody = jsonOperationBody[0];
+
+      // ToDo: now we need to parse the operation type
+
       return operation;
     });
 

@@ -30,6 +30,15 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
     const tableCtx = new TableStorageContext(context);
     // TODO: Implement batch operation logic here
     // We can have table or blob batches
+    // 1. Deserialize Batch operations into individual requests. => Base serialization classs
+    // 2. Process first batch operation => Hanlder logic
+    // 2.1 deserialize Json in first batch operation => Owned by Concrete Class implementation for TableSerialization
+    // 2.2 determine target function in handler for batch operation  => Owned by Concrete Class implementation for TableSerialization
+    // 2.3 Update operation with "type" designation  => Owned by Concrete Class implementation for TableSerialization
+    // 3. process operation => Hanlder logic
+    // 4. update batchOperation with status. => Hanlder logic
+    // 5. Next Batch operation -> (goto 2.1) => Hanlder logic
+
     // Generic Interface  DeserializeBatch (body: NodeJS.ReadableStream) returns (operations: iBatchOperation)
     // Explicit DeserializeBatchTable(body) : <text> -> <array of <TableBatchOperation>>
     // Check object array / List for valid content as per rules (do we need a rules / validation engine?)

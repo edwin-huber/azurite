@@ -18,6 +18,7 @@ export default class BatchOperation {
   public verb?: string;
   public path?: string;
   public batchOperationType?: BatchOperationType;
+  public jsonRequestBody?: string; // maybe we want the entity operation to be stored in a parsed format?
   public constructor(_batchType: BatchType) {
     this.batchType = _batchType;
   }
