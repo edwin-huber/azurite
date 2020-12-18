@@ -7,6 +7,7 @@ import * as Models from "../generated/artifacts/models";
 import Context from "../generated/Context";
 import ITableHandler from "../generated/handlers/ITableHandler";
 import { IEntity, TableModel } from "../persistence/ITableMetadataStore";
+import BatchRequest from "../../common/BatchRequest";
 import {
   DEFAULT_TABLE_LISTENING_PORT,
   DEFAULT_TABLE_SERVER_HOST_NAME,
@@ -17,6 +18,7 @@ import {
   RETURN_NO_CONTENT,
   TABLE_API_VERSION
 } from "../utils/constants";
+import { TableBatchSerialization } from "../utils/TableBatchSerialization";
 import BaseHandler from "./BaseHandler";
 
 export default class TableHandler extends BaseHandler implements ITableHandler {
@@ -31,13 +33,27 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
     // TODO: Implement batch operation logic here
     // We can have table or blob batches
     // 1. Deserialize Batch operations into individual requests. => Base serialization classs
-    // 2. Process first batch operation => Hanlder logic
-    // 2.1 deserialize Json in first batch operation => Owned by Concrete Class implementation for TableSerialization
-    // 2.2 determine target function in handler for batch operation  => Owned by Concrete Class implementation for TableSerialization
+    const serialization = new TableBatchSerialization();
+    const batchOperations = serialization.deserializeBatchRequest(
+      await this.streamToString(body)
+    );
+
+    let batchRequests: BatchRequest[];
+    // 2. loop through batch operations => Handler logic
+    batchOperations.forEach(operation => {
+      // 2.1 deserialize Json in first batch operation => Owned by Concrete Class implementation for TableSerialization
+      // maybe we can use the deserializer middleware and dispatch middleware?
+      // might need promisify to coonvert callback from deserializer to something that can be used here.
+      // deserializer is too tightly bound to request format in express, and I don't want to change back and forth between NodeJs.ReadableStream
+      const request: BatchRequest = new BatchRequest(operation);
+      batchRequests.push(request);
+    });
+
+    // 2.2 determine target function in handler for batch operation  => Owned by Concrete Class implementation for TableSerialization or handler?
     // 2.3 Update operation with "type" designation  => Owned by Concrete Class implementation for TableSerialization
-    // 3. process operation => Hanlder logic
-    // 4. update batchOperation with status. => Hanlder logic
-    // 5. Next Batch operation -> (goto 2.1) => Hanlder logic
+    // 3. process operation => Handler logic
+    // 4. update batchOperation with status. => Handler logic
+    // 5. Next Batch operation -> (goto 2.1) => Handler logic
 
     // Generic Interface  DeserializeBatch (body: NodeJS.ReadableStream) returns (operations: iBatchOperation)
     // Explicit DeserializeBatchTable(body) : <text> -> <array of <TableBatchOperation>>
@@ -653,5 +669,14 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
     // const tableName = tableCtx.tableName; // Get tableName from context
     // TODO
     throw new NotImplementedError();
+  }
+
+  private async streamToString(stream: NodeJS.ReadableStream): Promise<string> {
+    const chunks: any[] = [];
+    return new Promise((resolve, reject) => {
+      stream.on("data", chunk => chunks.push(chunk));
+      stream.on("error", reject);
+      stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    });
   }
 }

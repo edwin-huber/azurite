@@ -4,6 +4,7 @@ import BatchOperation from "../../common/BatchOperation";
 import { BatchType } from "../../common/BatchOperation";
 import BatchSubResponse from "../../common/BatchSubResponse";
 import IBatchSerialization from "../../common/IBatchSerialization";
+import { HttpMethod } from "../../table/generated/IRequest";
 
 // The semantics for entity group transactions are defined by the OData Protocol Specification.
 // https://www.odata.org/
@@ -12,11 +13,13 @@ export class TableBatchSerialization implements IBatchSerialization {
   // private batchGuidMatchingRegex = new RegExp("^--batch_.+\\r\\n");
   // private const subChangeSetPrefix = "changeset_";
 
+  // ToDo: This needs to return the array of BatchRequests, which are built
+  // from the batch operation deserialization
   public deserializeBatchRequest(
     batchRequestsString: string
   ): BatchOperation[] {
     const subChangeSetPrefixMatches = batchRequestsString.match(
-      "(boundary=)+(changeset_.+)+(?=\\r\\n)+"
+      "(boundary=)+(changeset_.+)+(?=\\n)+"
     );
     let changeSetBoundary: string;
     if (subChangeSetPrefixMatches != null) {
@@ -26,50 +29,67 @@ export class TableBatchSerialization implements IBatchSerialization {
     }
 
     // we can't rely on case of strings we use in delimiters
-    const contentTypeHeaderString = this.extractHeaderString(
+    const contentTypeHeaderString = this.extractRequestString(
       batchRequestsString,
-      "(\\r\\n)+(([c,C])+(ontent-)+([t,T])+(ype)+)+(?=:)+"
+      "(\\n)+(([c,C])+(ontent-)+([t,T])+(ype)+)+(?=:)+"
     );
-    const contentTransferEncodingString = this.extractHeaderString(
+    const contentTransferEncodingString = this.extractRequestString(
       batchRequestsString,
-      "(\\r\\n)+(([c,C])+(ontent-)+([t,T])+(ransfer-)+([e,E])+(ncoding))+(?=:)+"
+      "(\\n)+(([c,C])+(ontent-)+([t,T])+(ransfer-)+([e,E])+(ncoding))+(?=:)+"
     );
 
     // const splitRequestBody = batchRequestsString.split(changeSetBoundary);
 
-    const HTTP_LINE_ENDING = "\r\n";
-    // '--changeset_8a28b620-b4bb-458c-a177-0959fb14c977​​\r\n​​Content-Type​​: application/http\r\n​​Content-Transfer-Encoding​​: binary'
+    const HTTP_LINE_ENDING = "\n";
+    // '--changeset_8a28b620-b4bb-458c-a177-0959fb14c977\n​​Content-Type​​: application/http\n​​Content-Transfer-Encoding​​: binary'
     const subRequestPrefix = `--${changeSetBoundary}${HTTP_LINE_ENDING}${contentTypeHeaderString}: application/http${HTTP_LINE_ENDING}${contentTransferEncodingString}: binary`;
     const splitBody = batchRequestsString.split(subRequestPrefix);
 
     // dropping first element as boundary
     const subRequests = splitBody.slice(1, splitBody.length);
 
-    const batchRequests: BatchOperation[] = subRequests.map(subRequest => {
+    const batchOperations: BatchOperation[] = subRequests.map(subRequest => {
       // GET = Query, POST = Insert, PUT = Update, MERGE = Merge, DELETE = Delete
       const requestType = subRequest.match(
         "(GET|POST|PUT|MERGE|INSERT|DELETE)"
       );
-      const operation = new BatchOperation(BatchType.table);
-
       // extract HTTP Verb
       if (requestType === null || requestType.length < 2) {
         throw new Error(
           `Couldn't extract verb from sub-Request:\n ${subRequest}`
         );
       }
-      operation.verb = requestType[0];
-
-      // extract request path - regex needs improving
+      // extract request path - ToDo: regex needs improving
+      // also need to match
+      // '\nMERGE https://myaccount.table.core.windows.net/Blogs(PartitionKey='Channel_17', RowKey='3') HTTP/1.1\nContent-Type: application/json\nAccept: application/json;odata=minimalmetadata\nDataServiceVersion: 3.0;\n\n{"PartitionKey":"Channel_19", "RowKey":"3", "Rating":9, "Text":"PDC 2008..."}\n\n--changeset_8a28b620-b4bb-458c-a177-0959fb14c977--\n--batch_a1e9d677-b28b-435e-a89e-87e6a768a431\n'
+      // https://myaccount.table.core.windows.net/Blogs(PartitionKey='Channel_17', RowKey='3')
       const requestPath = subRequest.match(
-        /http+s?.+(table\.core\.windows\.net)(\/\S*\s+)/
+        /http+s?.+(table\.core\.windows\.net)(\/.+)(?=HTTP\/)/
       );
       if (requestPath === null || requestPath.length < 3) {
         throw new Error(
           `Couldn't extract path from sub-Request:\n ${subRequest}`
         );
       }
+
+      const jsonOperationBody = subRequest.match(/{+.+}+/);
+      if (jsonOperationBody === null || jsonOperationBody.length < 1) {
+        throw new Error(
+          `Couldn't extract path from sub-Request:\n ${subRequest}`
+        );
+      }
+
+      // we need the jsonBody and request path extracted to be able to extract headers.
+      const headers = subRequest.substring(
+        subRequest.search(requestPath[2]) + requestPath[2].length,
+        subRequest.search(jsonOperationBody[0])
+      );
+
+      const operation = new BatchOperation(BatchType.table, headers);
+      operation.httpMethod = requestType[0] as HttpMethod;
       operation.path = requestPath[2];
+      operation.url = requestPath[0];
+      operation.jsonRequestBody = jsonOperationBody[0];
 
       // Assuming / defaulting to Content Type of application/json based on:
       // 2020 12 09 - https://docs.microsoft.com/en-us/rest/api/storageservices/performing-entity-group-transactions
@@ -80,20 +100,12 @@ export class TableBatchSerialization implements IBatchSerialization {
 
       // ToDo: check where to validate and act upon Prefer:``return-no-content header
 
-      const jsonOperationBody = subRequest.match(/{+.+}+/);
-      if (jsonOperationBody === null || jsonOperationBody.length < 1) {
-        throw new Error(
-          `Couldn't extract path from sub-Request:\n ${subRequest}`
-        );
-      }
-      operation.jsonRequestBody = jsonOperationBody[0];
-
       // ToDo: now we need to parse the operation type
 
       return operation;
     });
 
-    // tslint:disable-next-line: no-console
+    // tslint:disable-next-line: no-consolef
     // console.log(splitBody[0]);
 
     /*
@@ -112,7 +124,7 @@ length:6
     const changesetBoundary = `changeset_${changesetId}​​`;
     */
 
-    return batchRequests;
+    return batchOperations;
   }
 
   // Has default response for now
@@ -122,19 +134,14 @@ length:6
     return new BatchSubResponse(BatchType.table);
   }
 
-  private extractHeaderString(
+  private extractRequestString(
     batchRequestsString: string,
     regExPattern: string
   ) {
-    const contentTypeHeaderStringMatches = batchRequestsString.match(
-      regExPattern
-    );
-    if (contentTypeHeaderStringMatches == null) {
-      // tslint:disable-next-line: no-console
-      // console.log(contentTypeHeaderString[2]);
+    const headerStringMatches = batchRequestsString.match(regExPattern);
+    if (headerStringMatches == null) {
       throw StorageError;
     }
-    const contentTypeHeaderString = contentTypeHeaderStringMatches[2];
-    return contentTypeHeaderString;
+    return headerStringMatches[2];
   }
 }

@@ -22,4 +22,7 @@ describe("batch serialization and deserialization unit tests, these are not the 
       "wrong operation type parsed"
     );
   });
+
+  // ToDo: we need to test the serialization and function of
+  // the BatchRequest type as well
 });
