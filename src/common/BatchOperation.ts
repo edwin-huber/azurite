@@ -17,6 +17,7 @@ export enum BatchOperationType {
 // Holder for batch operations
 export default class BatchOperation {
   public rawHeaders: string[];
+  public protocol?: string;
   public batchType: BatchType;
   public httpMethod?: HttpMethod;
   public url?: string;

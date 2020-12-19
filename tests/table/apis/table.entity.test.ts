@@ -454,7 +454,7 @@ describe("table Entity APIs test", () => {
     );
   });
 
-  it.only("Simple batch test: Inserts multiple entities as a batch, @loki", done => {
+  it("Simple batch test: Inserts multiple entities as a batch, @loki", done => {
     requestOverride.headers = {
       Prefer: "return-content",
       accept: "application/json;odata=fullmetadata"
@@ -495,6 +495,91 @@ describe("table Entity APIs test", () => {
       }
     );
   });
+
+  it("Simple batch test: Query non existing entity via a batch, @loki", done => {
+    requestOverride.headers = {
+      Prefer: "return-content",
+      accept: "application/json;odata=fullmetadata"
+    };
+    const batchEntity1 = createBasicEntityForTest();
+
+    // retrieve is the only operation in the batch
+    const entityBatch: Azure.TableBatch = new Azure.TableBatch();
+    entityBatch.retrieveEntity(
+      batchEntity1.PartitionKey._,
+      batchEntity1.RowKey._,
+      { echoContent: true }
+    );
+
+    tableService.executeBatch(
+      tableName,
+      entityBatch,
+      (updateError, updateResult, updateResponse) => {
+        if (updateError) {
+          assert.ifError(updateError);
+          done();
+        } else {
+          assert.equal(updateResponse.statusCode, 202); // No content
+          // TODO When QueryEntity is done - validate Entity Properties
+          tableService.retrieveEntity(
+            tableName,
+            batchEntity1.PartitionKey._,
+            batchEntity1.RowKey._,
+            (error, result) => {
+              if (error) {
+                assert.ifError(error);
+              } else if (result) {
+                assert.equal(result, null);
+              }
+              done();
+            }
+          );
+        }
+      }
+    );
+  });
+
+  it.only("Simple batch test: insert and Merge entity via a batch, @loki", done => {
+    requestOverride.headers = {
+      Prefer: "return-content",
+      accept: "application/json;odata=fullmetadata"
+    };
+    const batchEntity1 = createBasicEntityForTest();
+
+    // retrieve is the only operation in the batch
+    const entityBatch: Azure.TableBatch = new Azure.TableBatch();
+    entityBatch.addOperation("INSERT", batchEntity1, { echoContent: true });
+    batchEntity1.myValue._ = "value2";
+    entityBatch.mergeEntity(batchEntity1);
+
+    tableService.executeBatch(
+      tableName,
+      entityBatch,
+      (updateError, updateResult, updateResponse) => {
+        if (updateError) {
+          assert.ifError(updateError);
+          done();
+        } else {
+          assert.equal(updateResponse.statusCode, 202); // No content
+          // TODO When QueryEntity is done - validate Entity Properties
+          tableService.retrieveEntity(
+            tableName,
+            batchEntity1.PartitionKey._,
+            batchEntity1.RowKey._,
+            (error, result) => {
+              if (error) {
+                assert.ifError(error);
+              } else if (result) {
+                assert.equal(result, null);
+              }
+              done();
+            }
+          );
+        }
+      }
+    );
+  });
+
   // ToDo: Batch Validation:
   // A change set is a group of one or more insert, update, or delete operations.
   // A batch is a container of operations, including one or more change sets and query operations.
