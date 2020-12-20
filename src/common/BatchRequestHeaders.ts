@@ -1,5 +1,5 @@
-//  sample list of headers:
-/*  x-ms-version: 2013-08-15  
+/*  sample list of headers:
+    x-ms-version: 2013-08-15  
     Accept-Charset: UTF-8  
     DataServiceVersion: 3.0;  
     MaxDataServiceVersion: 3.0;NetFx  
@@ -22,6 +22,7 @@
 export default class BatchRequestHeaders {
   public constructor(headers: string[]) {
     this.rawHeaders = headers;
+    this.createDictFromRawHeaders();
   }
   private rawHeaders: string[];
   private headerItems: { [index: string]: string } = {};
@@ -80,5 +81,21 @@ export default class BatchRequestHeaders {
     }
 
     return values;
+  }
+
+  private createDictFromRawHeaders(): void {
+    this.rawHeaders.forEach(rawheader => {
+      if (rawheader != null) {
+        let headerKeyMatch = rawheader.match(/^(\S+):/);
+        let headerValueMatch = rawheader.match(/(\S+)$/);
+        if (headerKeyMatch != null) {
+          if (headerValueMatch != null) {
+            this.add(headerKeyMatch[1], headerValueMatch[0]);
+          } else {
+            this.add(headerKeyMatch[1], "");
+          }
+        }
+      }
+    });
   }
 }

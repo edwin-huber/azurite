@@ -5,14 +5,20 @@ import { BatchType } from "../../common/BatchOperation";
 import BatchSubResponse from "../../common/BatchSubResponse";
 import IBatchSerialization from "../../common/IBatchSerialization";
 import { HttpMethod } from "../../table/generated/IRequest";
+import TableBatchOperation from "../batch/TableBatchOperation";
 
 // The semantics for entity group transactions are defined by the OData Protocol Specification.
 // https://www.odata.org/
 // http://docs.oasis-open.org/odata/odata-json-format/v4.01/odata-json-format-v4.01.html#_Toc38457781
+// for now we are first getting the concrete implementation correct for table batch
+// we then need to figure out how to do this for blob, and what can be shared
+// I went down a long rathole trying to get this to work using the existing dispatch and serialization
+// classes before giving up and doing my own implementation
+// Unit Tests are vital here!
 export class TableBatchSerialization implements IBatchSerialization {
   public deserializeBatchRequest(
     batchRequestsString: string
-  ): BatchOperation[] {
+  ): TableBatchOperation[] {
     let subChangeSetPrefixMatches = batchRequestsString.match(
       "(boundary=)+(changeset_.+)+(?=\\n)+"
     );
@@ -31,6 +37,7 @@ export class TableBatchSerialization implements IBatchSerialization {
     }
 
     // we can't rely on case of strings we use in delimiters
+    // ToDo: might be easier and more efficient to use i option on the regex here...
     const contentTypeHeaderString = this.extractRequestHeaderString(
       batchRequestsString,
       "(\\n)+(([c,C])+(ontent-)+([t,T])+(ype)+)+(?=:)+"
@@ -40,10 +47,7 @@ export class TableBatchSerialization implements IBatchSerialization {
       "(\\n)+(([c,C])+(ontent-)+([t,T])+(ransfer-)+([e,E])+(ncoding))+(?=:)+"
     );
 
-    // const splitRequestBody = batchRequestsString.split(changeSetBoundary);
-
     const HTTP_LINE_ENDING = "\n";
-    // '--changeset_8a28b620-b4bb-458c-a177-0959fb14c977\n​​Content-Type​​: application/http\n​​Content-Transfer-Encoding​​: binary'
     const subRequestPrefix = `--${changeSetBoundary}${HTTP_LINE_ENDING}${contentTypeHeaderString}: application/http${HTTP_LINE_ENDING}${contentTransferEncodingString}: binary`;
     const splitBody = batchRequestsString.split(subRequestPrefix);
 
@@ -55,98 +59,75 @@ export class TableBatchSerialization implements IBatchSerialization {
       subRequests = splitBody;
     }
 
-    const batchOperations: BatchOperation[] = subRequests.map(subRequest => {
-      // GET = Query, POST = Insert, PUT = Update, MERGE = Merge, DELETE = Delete
-      const requestType = subRequest.match(
-        "(GET|POST|PUT|MERGE|INSERT|DELETE)"
-      );
-      // extract HTTP Verb
-      if (requestType === null || requestType.length < 2) {
-        throw new Error(
-          `Couldn't extract verb from sub-Request:\n ${subRequest}`
+    // This goes through each operation in the the request and maps the content
+    // of the request by deserializing it into a BatchOperation Type
+    const batchOperations: TableBatchOperation[] = subRequests.map(
+      subRequest => {
+        const requestType = subRequest.match(
+          "(GET|POST|PUT|MERGE|INSERT|DELETE)"
         );
+        if (requestType === null || requestType.length < 2) {
+          throw new Error(
+            `Couldn't extract verb from sub-Request:\n ${subRequest}`
+          );
+        }
+
+        const fullRequestURI = subRequest.match(/((http+s?)(\S)+)/);
+        if (fullRequestURI === null || fullRequestURI.length < 3) {
+          throw new Error(
+            `Couldn't extract full request URL from sub-Request:\n ${subRequest}`
+          );
+        }
+
+        // extract the request path
+        const pathString = fullRequestURI[1];
+        const path = pathString.match(/\S+devstoreaccount1\/(\w+)/);
+        if (path === null || path.length < 2) {
+          throw new Error(
+            `Couldn't extract path from URL in sub-Request:\n ${subRequest}`
+          );
+        }
+
+        const jsonOperationBody = subRequest.match(/{+.+}+/);
+
+        // ToDo: not sure if this logic is valid, it might be better
+        // to just have an empty body and then error out when determining routing of request in Handler
+        if (
+          subRequests.length > 1 &&
+          (jsonOperationBody === null || jsonOperationBody.length < 1)
+        ) {
+          throw new Error(
+            `Couldn't extract path from sub-Request:\n ${subRequest}`
+          );
+        }
+
+        let headers: string;
+        let jsonBody: string;
+        // currently getting an invalid header in the first position
+        // during table entity test for insert & merge
+        if (jsonOperationBody != null) {
+          // we need the jsonBody and request path extracted to be able to extract headers.
+          headers = subRequest.substring(
+            subRequest.indexOf(fullRequestURI[2]) + fullRequestURI[2].length,
+            subRequest.indexOf(jsonOperationBody[0])
+          );
+          jsonBody = jsonOperationBody[0];
+        } else {
+          let subStringStart = subRequest.indexOf(fullRequestURI[1]);
+          subStringStart += fullRequestURI[1].length + 1; // for the space
+          const subStringEnd = subRequest.length - changeSetBoundary.length - 2;
+          headers = subRequest.substring(subStringStart, subStringEnd);
+          jsonBody = "";
+        }
+
+        const operation = new BatchOperation(BatchType.table, headers);
+        operation.httpMethod = requestType[0] as HttpMethod;
+        operation.path = path[1];
+        operation.uri = fullRequestURI[0];
+        operation.jsonRequestBody = jsonBody;
+        return operation;
       }
-
-      const fullRequestURL = subRequest.match(/((http+s?)(\S)+)/);
-      if (fullRequestURL === null || fullRequestURL.length < 3) {
-        throw new Error(
-          `Couldn't extract full request URL from sub-Request:\n ${subRequest}`
-        );
-      }
-      const pathString = fullRequestURL[1];
-      const path = pathString.match(/\S+devstoreaccount1\/(\w+)/);
-      if (path === null || path.length < 2) {
-        throw new Error(
-          `Couldn't extract path from URL in sub-Request:\n ${subRequest}`
-        );
-      }
-      const jsonOperationBody = subRequest.match(/{+.+}+/);
-      let headers: string;
-      // ToDo: not sure if this logic is valid, it might be better
-      // to just have an empty body and then error out when determining routing of request in Handler
-      if (
-        subRequests.length > 1 &&
-        (jsonOperationBody === null || jsonOperationBody.length < 1)
-      ) {
-        throw new Error(
-          `Couldn't extract path from sub-Request:\n ${subRequest}`
-        );
-      }
-
-      let jsonBody: string;
-      if (jsonOperationBody != null) {
-        // we need the jsonBody and request path extracted to be able to extract headers.
-        headers = subRequest.substring(
-          subRequest.indexOf(fullRequestURL[2]) + fullRequestURL[2].length,
-          subRequest.indexOf(jsonOperationBody[0])
-        );
-        jsonBody = jsonOperationBody[0];
-      } else {
-        let subStringStart = subRequest.indexOf(fullRequestURL[1]);
-        subStringStart += fullRequestURL[1].length + 1; // for the space
-        const subStringEnd = subRequest.length - changeSetBoundary.length - 2;
-        headers = subRequest.substring(subStringStart, subStringEnd);
-        jsonBody = "";
-      }
-
-      const operation = new BatchOperation(BatchType.table, headers);
-      operation.httpMethod = requestType[0] as HttpMethod;
-      operation.path = path[1];
-      operation.url = fullRequestURL[0];
-      operation.jsonRequestBody = jsonBody;
-
-      // Assuming / defaulting to Content Type of application/json based on:
-      // 2020 12 09 - https://docs.microsoft.com/en-us/rest/api/storageservices/performing-entity-group-transactions
-      // JSON is the recommended payload format, and is the only format supported for versions 2015-12-11 and later.
-
-      // ToDo: defaulting to odata=minimalmetadata will need to check if
-      // we need to support other metadata options
-
-      // ToDo: check where to validate and act upon Prefer:``return-no-content header
-
-      // ToDo: now we need to parse the operation type
-
-      return operation;
-    });
-
-    // tslint:disable-next-line: no-consolef
-    // console.log(splitBody[0]);
-
-    /*
-0: ' --batch_a1e9d677-b28b-435e-a89e-87e6a768a431\r\nContent-Type: multipart/mixed; boundary='
-1:'\r\n\r\n--'
-2:'\r\nContent-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n\r\nPOST https://myaccount.table.core.windows.net/Blogs HTTP/1.1\r\nContent-Type: application/json\r\nAccept: application/json;odata=minimalmetadata\r\nPrefer: return-no-content\r\nDataServiceVersion: 3.0;\r\n\r\n{"PartitionKey":"Channel_19", "RowKey":"1", "Rating":9, "Text":".NET..."}\r\n--'
-3:'\r\nContent-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n\r\nPOST https://myaccount.table.core.windows.net/Blogs HTTP/1.1\r\nContent-Type: application/json\r\nAccept: application/json;odata=minimalmetadata\r\nPrefer: return-no-content\r\nDataServiceVersion: 3.0;\r\n\r\n{"PartitionKey":"Channel_17", "RowKey":"2", "Rating":9, "Text":"Azure..."}\r\n--'
-4:'\r\nContent-Type: application/http\r\nContent-Transfer-Encoding: binary\r\nMERGE https://myaccount.table.core.windows.net/Blogs(PartitionKey='Channel_17', RowKey='3') HTTP/1.1\r\nContent-Type: application/json\r\nAccept: application/json;odata=minimalmetadata\r\nDataServiceVersion: 3.0;\r\n\r\n{"PartitionKey":"Channel_19", "RowKey":"3", "Rating":9, "Text":"PDC 2008..."}\r\n\r\n--'
-5:'--\r\n--batch_a1e9d677-b28b-435e-a89e-87e6a768a431\r\n'
-length:6
-*/
-
-    /*
-    const batchGuid = 
-    const batchBoundary = `batch_${batchGuid}​​`;
-    const changesetBoundary = `changeset_${changesetId}​​`;
-    */
+    );
 
     return batchOperations;
   }

@@ -13,8 +13,6 @@ export default class BatchRequest implements IRequest {
   private headers: BatchRequestHeaders;
 
   private batchOperation: BatchOperation;
-  // hard coded for now, we could potentially retrieve by other means
-  private accountName: string = "devstoreaccount1";
 
   getMethod(): HttpMethod {
     if (this.batchOperation.httpMethod != null) {
@@ -27,7 +25,15 @@ export default class BatchRequest implements IRequest {
     // ToDo: is this a valid assumption for the batch API?
     // ToDo: here we also assume https, which is also not true...
     // we need to parse this from the request
-    return `https://${this.accountName}.${this.batchOperation.batchType}.core.windows.net/$batch`;
+    // return `https://${this.accountName}.${this.batchOperation.batchType}.core.windows.net/$batch`;
+    if (this.batchOperation.uri != null && this.batchOperation.path != null) {
+      return this.batchOperation.uri.substring(
+        0,
+        this.batchOperation.uri.length - this.batchOperation.path.length
+      );
+    } else {
+      throw exception("uri or path null when calling getUrl on BatchRequest");
+    }
   }
   getEndpoint(): string {
     throw new Error("Method not implemented.");
@@ -36,14 +42,14 @@ export default class BatchRequest implements IRequest {
     if (this.batchOperation.path != null) {
       return this.batchOperation.path;
     } else {
-      throw exception("path null on batch operation");
+      throw exception("path null  when calling getPath on BatchRequest");
     }
   }
   getBodyStream(): NodeJS.ReadableStream {
     if (this.batchOperation.jsonRequestBody != null) {
       return Stream.Readable.from(this.batchOperation.jsonRequestBody);
     } else {
-      throw exception("body null on batch operation");
+      throw exception("body null  when calling getBodyStream on BatchRequest");
     }
   }
   // hoping we dont need this right now!
@@ -54,7 +60,7 @@ export default class BatchRequest implements IRequest {
     if (this.batchOperation.jsonRequestBody != null) {
       return this.batchOperation.jsonRequestBody;
     } else {
-      throw exception("body null on batch operation");
+      throw exception("body null  when calling getBody on BatchRequest");
     }
   }
   getHeader(field: string): string | undefined {
@@ -70,6 +76,12 @@ export default class BatchRequest implements IRequest {
     throw new Error("Method not implemented.");
   }
   getProtocol(): string {
-    throw new Error("Method not implemented.");
+    if (this.batchOperation.protocol != null) {
+      return this.batchOperation.protocol;
+    } else {
+      throw exception(
+        "protocol null  when calling getProtocol on BatchRequest"
+      );
+    }
   }
 }

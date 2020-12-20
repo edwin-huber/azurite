@@ -50,6 +50,7 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
     });
 
     // 2.2 determine target function in handler for batch operation  => Owned by Concrete Class implementation for TableSerialization or handler?
+
     // 2.3 Update operation with "type" designation  => Owned by Concrete Class implementation for TableSerialization
     // 3. process operation => Handler logic
     // 4. update batchOperation with status. => Handler logic

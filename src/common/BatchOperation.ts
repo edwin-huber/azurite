@@ -5,24 +5,15 @@ export enum BatchType {
   table = "table"
 }
 
-export enum BatchOperationType {
-  unknown = "unknown",
-  insert = "insert",
-  delete = "delete",
-  upsert = "upsert",
-  query = "query",
-  merge = "merge"
-}
-
 // Holder for batch operations
 export default class BatchOperation {
   public rawHeaders: string[];
   public protocol?: string;
   public batchType: BatchType;
   public httpMethod?: HttpMethod;
-  public url?: string;
+  public parameters?: string;
+  public uri?: string;
   public path?: string;
-  public batchOperationType?: BatchOperationType;
   public jsonRequestBody?: string; // maybe we want the entity operation to be stored in a parsed format?
   public constructor(_batchType: BatchType, headers: string) {
     this.batchType = _batchType;

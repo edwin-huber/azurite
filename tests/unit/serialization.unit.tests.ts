@@ -29,7 +29,7 @@ describe("batch serialization and deserialization unit tests, these are not the 
       "wrong path parsed"
     );
     assert.equal(
-      batchOperationArray[0].url,
+      batchOperationArray[0].uri,
       "http://127.0.0.1:11002/devstoreaccount1/table160837408807101776",
       "wrong url parsed"
     );
@@ -51,7 +51,7 @@ describe("batch serialization and deserialization unit tests, these are not the 
       "wrong path parsed"
     );
     assert.equal(
-      batchOperationArray[1].url,
+      batchOperationArray[1].uri,
       "http://127.0.0.1:11002/devstoreaccount1/table160837408807101776",
       "wrong url parsed"
     );
@@ -73,7 +73,7 @@ describe("batch serialization and deserialization unit tests, these are not the 
       "wrong path parsed"
     );
     assert.equal(
-      batchOperationArray[2].url,
+      batchOperationArray[2].uri,
       "http://127.0.0.1:11002/devstoreaccount1/table160837408807101776",
       "wrong url parsed"
     );
@@ -106,7 +106,7 @@ describe("batch serialization and deserialization unit tests, these are not the 
       "wrong path parsed"
     );
     assert.equal(
-      batchOperationArray[0].url,
+      batchOperationArray[0].uri,
       "http://127.0.0.1:11002/devstoreaccount1/table160837567141205013(PartitionKey=%27part1%27,RowKey=%27row160837567145205850%27)",
       "wrong url parsed"
     );
@@ -138,7 +138,7 @@ describe("batch serialization and deserialization unit tests, these are not the 
       "wrong path parsed"
     );
     assert.equal(
-      batchOperationArray[0].url,
+      batchOperationArray[0].uri,
       "http://127.0.0.1:11002/devstoreaccount1/table160837770303307822",
       "wrong url parsed"
     );
@@ -160,7 +160,7 @@ describe("batch serialization and deserialization unit tests, these are not the 
       "wrong path parsed"
     );
     assert.equal(
-      batchOperationArray[1].url,
+      batchOperationArray[1].uri,
       "http://127.0.0.1:11002/devstoreaccount1/table160837770303307822(PartitionKey=%27part1%27,RowKey=%27row160837770307508823%27)",
       "wrong url parsed"
     );
