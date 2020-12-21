@@ -101,24 +101,23 @@ export class TableBatchSerialization implements IBatchSerialization {
           );
         }
 
-        let headers: string;
-        let jsonBody: string;
+        let headers, jsonBody: string;
+        let subStringStart, subStringEnd: number;
         // currently getting an invalid header in the first position
         // during table entity test for insert & merge
+        subStringStart = subRequest.indexOf(fullRequestURI[1]);
+        subStringStart += fullRequestURI[1].length + 1; // for the space
+
         if (jsonOperationBody != null) {
           // we need the jsonBody and request path extracted to be able to extract headers.
-          headers = subRequest.substring(
-            subRequest.indexOf(fullRequestURI[2]) + fullRequestURI[2].length,
-            subRequest.indexOf(jsonOperationBody[0])
-          );
+          subStringEnd = subRequest.indexOf(jsonOperationBody[0]);
           jsonBody = jsonOperationBody[0];
         } else {
-          let subStringStart = subRequest.indexOf(fullRequestURI[1]);
-          subStringStart += fullRequestURI[1].length + 1; // for the space
-          const subStringEnd = subRequest.length - changeSetBoundary.length - 2;
-          headers = subRequest.substring(subStringStart, subStringEnd);
+          subStringEnd = subRequest.length - changeSetBoundary.length - 2;
           jsonBody = "";
         }
+
+        headers = subRequest.substring(subStringStart, subStringEnd);
 
         const operation = new BatchOperation(BatchType.table, headers);
         operation.httpMethod = requestType[0] as HttpMethod;

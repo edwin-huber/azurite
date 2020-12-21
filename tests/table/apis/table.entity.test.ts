@@ -454,7 +454,7 @@ describe("table Entity APIs test", () => {
     );
   });
 
-  it("Simple batch test: Inserts multiple entities as a batch, @loki", done => {
+  it.only("Simple batch test: Inserts multiple entities as a batch, @loki", done => {
     requestOverride.headers = {
       Prefer: "return-content",
       accept: "application/json;odata=fullmetadata"
@@ -539,7 +539,7 @@ describe("table Entity APIs test", () => {
     );
   });
 
-  it.only("Simple batch test: insert and Merge entity via a batch, @loki", done => {
+  it("Simple batch test: insert and Merge entity via a batch, @loki", done => {
     requestOverride.headers = {
       Prefer: "return-content",
       accept: "application/json;odata=fullmetadata"

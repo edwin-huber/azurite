@@ -7,6 +7,8 @@ export enum BatchType {
 
 // Holder for batch operations
 export default class BatchOperation {
+  public changeSetID?: string;
+  public batchBoundary?: string;
   public rawHeaders: string[];
   public protocol?: string;
   public batchType: BatchType;

@@ -9,6 +9,7 @@ export default class BatchRequest implements IRequest {
     this.batchOperation = batchOperation;
     this.headers = new BatchRequestHeaders(batchOperation.rawHeaders);
   }
+  public response?: any;
 
   private headers: BatchRequestHeaders;
 

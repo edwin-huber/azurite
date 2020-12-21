@@ -55,6 +55,7 @@ export default class BatchRequestHeaders {
     return val;
   }
 
+  // ToDo: Should this maybe be case insensitive?
   public header(key: string): string {
     return this.headerItems[key];
   }
@@ -88,12 +89,12 @@ export default class BatchRequestHeaders {
       if (rawheader != null) {
         let headerKeyMatch = rawheader.match(/^(\S+):/);
         let headerValueMatch = rawheader.match(/(\S+)$/);
-        if (headerKeyMatch != null) {
-          if (headerValueMatch != null) {
-            this.add(headerKeyMatch[1], headerValueMatch[0]);
-          } else {
-            this.add(headerKeyMatch[1], "");
-          }
+        if (headerKeyMatch == null && rawheader.length > 2) {
+          this.add(rawheader, "");
+        } else if (headerValueMatch != null && headerKeyMatch != null) {
+          this.add(headerKeyMatch[1], headerValueMatch[0]);
+        } else if (headerKeyMatch != null) {
+          this.add(headerKeyMatch[1], "");
         }
       }
     });
