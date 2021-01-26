@@ -132,10 +132,11 @@ export class TableBatchSerialization implements IBatchSerialization {
   }
 
   // Has default response for now
+  // ToDo: Figure out how to properly add the headers
   public serializeBatchResponse(
     batchOperations: BatchOperation[]
   ): BatchSubResponse {
-    return new BatchSubResponse(BatchType.table);
+    return new BatchSubResponse(BatchType.table, "");
   }
 
   private extractRequestHeaderString(
