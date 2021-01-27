@@ -9,7 +9,6 @@ import TableHandler from "../handlers/TableHandler";
 export default class TableBatchManager {
   private batchOperations: TableBatchOperation[] = [];
   private requests: BatchRequest[] = [];
-  // private individualOpResponses: string [] = [];
   private serialization = new TableBatchSerialization();
   private context: TableStorageContext;
   private parentHandler: TableHandler;
@@ -19,10 +18,24 @@ export default class TableBatchManager {
     this.parentHandler = handler;
   }
 
+  /*
+   * processBatchRequestAndSerializeResponse
+   * Takes batchRequest body, deserializes requests, submits to handlers, then returns serialized response
+   */
+  public async processBatchRequestAndSerializeResponse(
+    batchRequestBody: string
+  ): Promise<string> {
+    this.deserializeBatchRequests(batchRequestBody);
+
+    await this.submitRequestsToHandlers();
+
+    return this.serializeResponses();
+  }
+
   /**
    * deserializeBatchRequests
    */
-  public deserializeBatchRequests(batchRequestBody: string): void {
+  private deserializeBatchRequests(batchRequestBody: string): void {
     this.batchOperations = this.serialization.deserializeBatchRequest(
       batchRequestBody
     );
@@ -31,7 +44,7 @@ export default class TableBatchManager {
   /**
    * submitRequestsToHandlers
    */
-  public async submitRequestsToHandlers(): Promise<void> {
+  private async submitRequestsToHandlers(): Promise<void> {
     this.batchOperations.forEach(operation => {
       const request: BatchRequest = new BatchRequest(operation);
       this.requests.push(request);
@@ -58,22 +71,21 @@ export default class TableBatchManager {
    * serializeResponses
    * https://docs.microsoft.com/en-us/rest/api/storageservices/performing-entity-group-transactions#json-versions-2013-08-15-and-later-2
    */
-  public serializeResponses(): string {
+  private serializeResponses(): string {
     let responseString: string = "";
     // Now we need to serialize the response
     // We currently use entry at position 0 for all request wide values
     // this needs to move to an encapsulating object.
     // based on research, a stringbuilder is only worth doing with 1000s of string ops
-    // change to response
-    const batchBoundary = this.batchOperations[0].batchBoundary
-      ? this.batchOperations[0].batchBoundary.replace("batch", "batchresponse")
-      : "";
-    let changesetBoundary = this.batchOperations[0].changeSetBoundary
-      ? this.batchOperations[0].changeSetBoundary.replace(
-          "changeset",
-          "changesetresponse"
-        )
-      : "";
+    const batchBoundary = this.serialization.batchBoundary.replace(
+      "batch",
+      "batchresponse"
+    );
+
+    let changesetBoundary = this.serialization.changesetBoundary.replace(
+      "changeset",
+      "changesetresponse"
+    );
 
     // first add:
     // --batchresponse_e69b1c6c-62ff-471e-ab88-9a4aeef0a880
@@ -88,13 +100,11 @@ export default class TableBatchManager {
       // need to add the boundaries in here like
       // --changesetresponse_a6253244-7e21-42a8-a149-479ee9e94a25
       responseString += changesetBoundary;
-      // Next single Op response
 
       responseString += request.response;
       // ToDo: Why is Etag Missing? / Undefined
     });
 
-    // Finally
     // --changesetresponse_a6253244-7e21-42a8-a149-479ee9e94a25--
     responseString += changesetBoundary + "--\n";
     // --batchresponse_e69b1c6c-62ff-471e-ab88-9a4aeef0a880--
@@ -103,44 +113,28 @@ export default class TableBatchManager {
     return responseString;
   }
 
-  // we only have 5 possible HTTP Verbs to determine the operation
-  // seems its not "too" complicated...
+  /*
+   * routeAndDispatchBatchRequest
+   * Routes and dispatches single operations against the table handler and stores
+   * the serialized result
+   */
   private async routeAndDispatchBatchRequest(
     request: BatchRequest,
     context: Context,
     contentID: number
   ): Promise<any> {
-    /*
-    QUERY : 
-    GET	https://myaccount.table.core.windows.net/mytable(PartitionKey='<partition-key>',RowKey='<row-key>')?$select=<comma-separated-property-names>
-    GET https://myaccount.table.core.windows.net/mytable()?$filter=<query-expression>&$select=<comma-separated-property-names>
-    
-    INSERT:
-    POST	https://myaccount.table.core.windows.net/mytable
-
-    UPDATE:
-    PUT http://127.0.0.1:10002/devstoreaccount1/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
-    INSERT OR REPLACE:
-    PUT	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
-
-    MERGE:
-    MERGE	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
-    INSERT OR MERGE
-    MERGE	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
-
-    DELETE:
-    DELETE	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
-    */
     // the context that we have will not work with the calls and needs updating for
     // batch operations, need a suitable deep clone, as each request needs to be treated seaprately
-    // this might be too shall with inheritance
+    // this might be too shallow with inheritance
     const batchContextClone = Object.create(context);
     batchContextClone.tableName = request.getPath();
     batchContextClone.path = request.getPath();
     let response: any;
+    // we only use 5 HTTP Verbs to determine the table operation type
     switch (request.getMethod()) {
       case "POST":
-        // we are inserting and entity
+        // INSERT: we are inserting an entity
+        // POST	https://myaccount.table.core.windows.net/mytable
         let params: BatchTableInsertEntityOptionalParams = new BatchTableInsertEntityOptionalParams(
           request
         );
@@ -157,15 +151,21 @@ export default class TableBatchManager {
         );
         break;
       case "PUT":
-        // we have update
+        // UPDATE: we are updating an entity
+        // PUT http://127.0.0.1:10002/devstoreaccount1/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
+        // INSERT OR REPLACE:
+        // PUT	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
         throw new Error("Method not implemented.");
         break;
       case "DELETE":
-        // we have delete
+        // DELETE: we are deleting an entity
+        // DELETE	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
         throw new Error("Method not implemented.");
         break;
       case "GET":
-        // we have query
+        // QUERY : we are querying / retrieving an entity
+        // GET	https://myaccount.table.core.windows.net/mytable(PartitionKey='<partition-key>',RowKey='<row-key>')?$select=<comma-separated-property-names>
+        // GET https://myaccount.table.core.windows.net/mytable()?$filter=<query-expression>&$select=<comma-separated-property-names>
         throw new Error("Method not implemented.");
         break;
       case "CONNECT":
@@ -184,8 +184,10 @@ export default class TableBatchManager {
         throw new Error("Patch Method unsupported in batch.");
         break;
       default:
-        // this must be the merge
-        // as the merge opertion is not currently generated by autorest
+        // MERGE: this must be the merge, as the merge operation is not currently generated by autorest
+        // MERGE	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
+        // INSERT OR MERGE
+        // MERGE	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
         throw new Error("Method not implemented.");
     }
   }

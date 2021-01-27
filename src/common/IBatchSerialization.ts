@@ -6,9 +6,11 @@
  */
 
 import BatchOperation from "./BatchOperation";
-import BatchSubResponse from "./BatchSubResponse";
 
 export default interface IBatchSerialization {
+  batchBoundary: string;
+  changesetBoundary: string;
   deserializeBatchRequest(batchRequests: string): BatchOperation[];
-  serializeBatchResponse(batchOperations: BatchOperation[]): BatchSubResponse;
+  extractBatchBoundary(batchRequestsString: string): void;
+  extractChangeSetBoundary(batchRequestsString: string): void;
 }

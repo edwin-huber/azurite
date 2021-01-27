@@ -1,3 +1,4 @@
+import { exception } from "console";
 import { StorageError } from "../../blob/generated/artifacts/mappers";
 import BatchOperation from "../../common/BatchOperation";
 // import { BatchOperationType } from "../../common/BatchOperation";
@@ -17,33 +18,55 @@ import * as Models from "../generated/artifacts/models";
 // we then need to figure out how to do this for blob, and what can be shared
 // I went down a long rathole trying to get this to work using the existing dispatch and serialization
 // classes before giving up and doing my own implementation
-// Unit Tests are vital here!
+// Tests are vital here!
 export class TableBatchSerialization implements IBatchSerialization {
+  public batchBoundary: string = "";
+  public changesetBoundary: string = "";
+
   // ToDo: needs to be corrected to match current implementation
-  serializeBatchResponse(batchOperations: BatchOperation[]): BatchSubResponse {
+  public serializeBatchResponse(
+    batchOperations: BatchOperation[]
+  ): BatchSubResponse {
     throw new Error("Method not implemented.");
+  }
+
+  public extractBatchBoundary(batchRequestsString: string): void {
+    const batchBoundaryMatch = batchRequestsString.match(
+      "(--batch_.+)+(?=\\n)+"
+    );
+    if (null != batchBoundaryMatch) {
+      this.batchBoundary = batchBoundaryMatch[0];
+    } else {
+      throw exception("no batch boiundary found in request");
+    }
+  }
+
+  // ToDo: improve RegEx
+  public extractChangeSetBoundary(batchRequestsString: string): void {
+    let subChangeSetPrefixMatches = batchRequestsString.match(
+      "(boundary=)+(changeset_.+)+(?=\\n)+"
+    );
+
+    if (subChangeSetPrefixMatches != null) {
+      this.changesetBoundary = subChangeSetPrefixMatches[2];
+    } else {
+      // we need to see if this is a single query batch operation
+      // whose format is different! (as we only support a single query per batch)
+      // ToDo: do we need to check for GET HTTP verb?
+      subChangeSetPrefixMatches = batchRequestsString.match(/(--batch_\w+)/);
+      if (subChangeSetPrefixMatches != null) {
+        this.changesetBoundary = subChangeSetPrefixMatches[1];
+      } else {
+        throw StorageError;
+      }
+    }
   }
 
   public deserializeBatchRequest(
     batchRequestsString: string
   ): TableBatchOperation[] {
-    const batchBoundary = batchRequestsString.match("(--batch_.+)+(?=\\n)+");
-    let subChangeSetPrefixMatches = batchRequestsString.match(
-      "(boundary=)+(changeset_.+)+(?=\\n)+"
-    );
-    let changeSetBoundary: string;
-    if (subChangeSetPrefixMatches != null) {
-      changeSetBoundary = subChangeSetPrefixMatches[2];
-    } else {
-      // we need to see if this is a single query batch operation
-      // whose format is different! (as we only support a single query per batch)
-      subChangeSetPrefixMatches = batchRequestsString.match(/(--batch_\w+)/);
-      if (subChangeSetPrefixMatches != null) {
-        changeSetBoundary = subChangeSetPrefixMatches[1];
-      } else {
-        throw StorageError;
-      }
-    }
+    this.extractBatchBoundary(batchRequestsString);
+    this.extractChangeSetBoundary(batchRequestsString);
 
     // we can't rely on case of strings we use in delimiters
     // ToDo: might be easier and more efficient to use i option on the regex here...
@@ -57,7 +80,7 @@ export class TableBatchSerialization implements IBatchSerialization {
     );
 
     const HTTP_LINE_ENDING = "\n";
-    const subRequestPrefix = `--${changeSetBoundary}${HTTP_LINE_ENDING}${contentTypeHeaderString}: application/http${HTTP_LINE_ENDING}${contentTransferEncodingString}: binary`;
+    const subRequestPrefix = `--${this.changesetBoundary}${HTTP_LINE_ENDING}${contentTypeHeaderString}: application/http${HTTP_LINE_ENDING}${contentTransferEncodingString}: binary`;
     const splitBody = batchRequestsString.split(subRequestPrefix);
 
     // dropping first element as boundary if we have a batch with multiple requests
@@ -110,8 +133,10 @@ export class TableBatchSerialization implements IBatchSerialization {
           );
         }
 
-        let headers, jsonBody: string;
-        let subStringStart, subStringEnd: number;
+        let headers: string;
+        let jsonBody: string;
+        let subStringStart: number;
+        let subStringEnd: number;
         // currently getting an invalid header in the first position
         // during table entity test for insert & merge
         subStringStart = subRequest.indexOf(fullRequestURI[1]);
@@ -122,7 +147,7 @@ export class TableBatchSerialization implements IBatchSerialization {
           subStringEnd = subRequest.indexOf(jsonOperationBody[0]);
           jsonBody = jsonOperationBody[0];
         } else {
-          subStringEnd = subRequest.length - changeSetBoundary.length - 2;
+          subStringEnd = subRequest.length - this.changesetBoundary.length - 2;
           jsonBody = "";
         }
 
@@ -133,26 +158,11 @@ export class TableBatchSerialization implements IBatchSerialization {
         operation.path = path[1];
         operation.uri = fullRequestURI[0];
         operation.jsonRequestBody = jsonBody;
-        // ToDo: this is currently inefficient, and we need to have a higher level object to contain
-        // the values which are the same across ops and responses for a batch
-        operation.changeSetBoundary = changeSetBoundary;
-        operation.batchBoundary = batchBoundary ? batchBoundary[0] : "";
         return operation;
       }
     );
 
     return batchOperations;
-  }
-
-  private extractRequestHeaderString(
-    batchRequestsString: string,
-    regExPattern: string
-  ) {
-    const headerStringMatches = batchRequestsString.match(regExPattern);
-    if (headerStringMatches == null) {
-      throw StorageError;
-    }
-    return headerStringMatches[2];
   }
 
   // creates the serialized entitygrouptransaction / batch response body
@@ -164,18 +174,18 @@ export class TableBatchSerialization implements IBatchSerialization {
   ): string {
     /*
     looking to replicate this reponse:
-    Content-Type: application/http  
-    Content-Transfer-Encoding: binary  
-  
-    HTTP/1.1 204 No Content  
-    Content-ID: 1  
-    X-Content-Type-Options: nosniff  
-    Cache-Control: no-cache  
-    Preference-Applied: return-no-content  
-    DataServiceVersion: 3.0;  
-    Location: https://myaccount.table.core.windows.net/Blogs(PartitionKey='Channel_19',RowKey='1')  
-    DataServiceId: https://myaccount.table.core.windows.net/Blogs (PartitionKey='Channel_19',RowKey='1')  
-    ETag: W/"0x8D101F7E4B662C4"  
+    Content-Type: application/http
+    Content-Transfer-Encoding: binary
+
+    HTTP/1.1 204 No Content
+    Content-ID: 1
+    X-Content-Type-Options: nosniff
+    Cache-Control: no-cache
+    Preference-Applied: return-no-content
+    DataServiceVersion: 3.0;
+    Location: https://myaccount.table.core.windows.net/Blogs(PartitionKey='Channel_19',RowKey='1')
+    DataServiceId: https://myaccount.table.core.windows.net/Blogs (PartitionKey='Channel_19',RowKey='1')
+    ETag: W/"0x8D101F7E4B662C4"
     */
     // ToDo: keeping my life easy to start and defaulting to "return no content"
     let serializedResponses: string = "";
@@ -197,5 +207,16 @@ export class TableBatchSerialization implements IBatchSerialization {
     serializedResponses += "DataServiceId: " + request.getUrl() + "\n";
     serializedResponses += "ETag: " + response.eTag + "\n";
     return serializedResponses;
+  }
+
+  private extractRequestHeaderString(
+    batchRequestsString: string,
+    regExPattern: string
+  ) {
+    const headerStringMatches = batchRequestsString.match(regExPattern);
+    if (headerStringMatches == null) {
+      throw StorageError;
+    }
+    return headerStringMatches[2];
   }
 }

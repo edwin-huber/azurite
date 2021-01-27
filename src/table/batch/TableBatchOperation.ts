@@ -8,5 +8,4 @@ export default class TableBatchOperation extends BatchOperation {
   // we extend here with the operation from table artifacts
   // blob implementation will extend using blob operation artifact
   public operation?: Operation;
-  public changeSetBoundary?: string;
 }

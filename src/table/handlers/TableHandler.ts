@@ -2,11 +2,6 @@ import BaseHandler from "./BaseHandler";
 
 import BufferStream from "../../common/utils/BufferStream";
 import Context from "../generated/Context";
-import { newEtag } from "../../common/utils/utils";
-import * as Models from "../generated/artifacts/models";
-import NotImplementedError from "../errors/NotImplementedError";
-import StorageErrorFactory from "../errors/StorageErrorFactory";
-import TableStorageContext from "../context/TableStorageContext";
 import ITableHandler from "../generated/handlers/ITableHandler";
 import { IEntity, TableModel } from "../persistence/ITableMetadataStore";
 import {
@@ -20,8 +15,13 @@ import {
   TABLE_API_VERSION
 } from "../utils/constants";
 
-import TableBatchManager from "../batch/TableBatchManager";
 import { Stream } from "stream";
+import { newEtag } from "../../common/utils/utils";
+import TableBatchManager from "../batch/TableBatchManager";
+import TableStorageContext from "../context/TableStorageContext";
+import NotImplementedError from "../errors/NotImplementedError";
+import StorageErrorFactory from "../errors/StorageErrorFactory";
+import * as Models from "../generated/artifacts/models";
 
 export default class TableHandler extends BaseHandler implements ITableHandler {
   public async batch(
@@ -34,18 +34,17 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
     const tableCtx = new TableStorageContext(context);
 
     const tableBatchManager = new TableBatchManager(tableCtx, this);
-    tableBatchManager.deserializeBatchRequests(await this.streamToString(body));
 
-    await tableBatchManager.submitRequestsToHandlers();
+    const response = await tableBatchManager.processBatchRequestAndSerializeResponse(
+      await this.streamToString(body)
+    );
 
-    const response = await tableBatchManager.serializeResponses();
-
-    console.log(response);
+    // use this to debug response:
+    // console.log(response);
 
     // need to convert response to NodeJS.ReadableStream
     body = Stream.Readable.from(response);
-    // Need to check how the reponse will be constructed, and how we handle the changeset etc
-    // on the way out to the API user
+
     return {
       requestId: tableCtx.contextID,
       version: TABLE_API_VERSION,
