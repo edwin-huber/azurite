@@ -1,6 +1,5 @@
 import BaseHandler from "./BaseHandler";
-import BatchRequest from "../../common/BatchRequest";
-import BatchTableInsertEntityOptionalParams from "../batch/batch.models";
+
 import BufferStream from "../../common/utils/BufferStream";
 import Context from "../generated/Context";
 import { newEtag } from "../../common/utils/utils";
@@ -20,7 +19,9 @@ import {
   RETURN_NO_CONTENT,
   TABLE_API_VERSION
 } from "../utils/constants";
-import { TableBatchSerialization } from "../utils/TableBatchSerialization";
+
+import TableBatchManager from "../batch/TableBatchManager";
+import { Stream } from "stream";
 
 export default class TableHandler extends BaseHandler implements ITableHandler {
   public async batch(
@@ -31,44 +32,18 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
     context: Context
   ): Promise<Models.TableBatchResponse> {
     const tableCtx = new TableStorageContext(context);
-    const serialization = new TableBatchSerialization();
-    const batchOperations = serialization.deserializeBatchRequest(
-      await this.streamToString(body)
-    );
 
-    let response: string[] = [];
-    let batchRequests: BatchRequest[] = [];
+    const tableBatchManager = new TableBatchManager(tableCtx, this);
+    tableBatchManager.deserializeBatchRequests(await this.streamToString(body));
 
-    batchOperations.forEach(operation => {
-      const request: BatchRequest = new BatchRequest(operation);
-      batchRequests.push(request);
-    });
+    await tableBatchManager.submitRequestsToHandlers();
 
-    if (batchRequests.length > 0) {
-      for (let singleReq of batchRequests) {
-        let contentID = 1; // contentID starts at 1 for batch
-        try {
-          singleReq.response = await this.routeAndDispatchBatchRequest(
-            singleReq,
-            context,
-            contentID
-          );
-        } catch (err) {
-          throw err;
-        }
-        contentID++;
-      }
-    }
+    const response = await tableBatchManager.serializeResponses();
 
-    // Now we need to serialize the response
-    batchRequests.forEach(request => {
-      // need to add the boundaries in here like
-      // --changesetresponse_a6253244-7e21-42a8-a149-479ee9e94a25
-      response.push(request.response);
-    });
+    console.log(response);
 
     // need to convert response to NodeJS.ReadableStream
-
+    body = Stream.Readable.from(response);
     // Need to check how the reponse will be constructed, and how we handle the changeset etc
     // on the way out to the API user
     return {
@@ -692,138 +667,5 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
       stream.on("error", reject);
       stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     });
-  }
-
-  // we only have 5 possible HTTP Verbs to determine the operation
-  // seems its not "too" complicated...
-  private async routeAndDispatchBatchRequest(
-    request: BatchRequest,
-    context: Context,
-    contentID: number
-  ): Promise<any> {
-    /*
-    QUERY : 
-    GET	https://myaccount.table.core.windows.net/mytable(PartitionKey='<partition-key>',RowKey='<row-key>')?$select=<comma-separated-property-names>
-    GET https://myaccount.table.core.windows.net/mytable()?$filter=<query-expression>&$select=<comma-separated-property-names>
-    
-    INSERT:
-    POST	https://myaccount.table.core.windows.net/mytable
-
-    UPDATE:
-    PUT http://127.0.0.1:10002/devstoreaccount1/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
-    INSERT OR REPLACE:
-    PUT	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
-
-    MERGE:
-    MERGE	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
-    INSERT OR MERGE
-    MERGE	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
-
-    DELETE:
-    DELETE	https://myaccount.table.core.windows.net/mytable(PartitionKey='myPartitionKey', RowKey='myRowKey')
-    */
-    // the context that we have will not work with the calls and needs updating for
-    // batch operations, need a suitable deep clone, as each request needs to be treated seaprately
-    // this might be too shall with inheritance
-    const batchContextClone = Object.create(context);
-    batchContextClone.tableName = request.getPath();
-    batchContextClone.path = request.getPath();
-    let response: any;
-    switch (request.getMethod()) {
-      case "POST":
-        // we are inserting and entity
-        let params: BatchTableInsertEntityOptionalParams = new BatchTableInsertEntityOptionalParams(
-          request
-        );
-
-        response = await this.insertEntity(
-          request.getPath(),
-          params,
-          batchContextClone
-        );
-        return this.serializeInsertEntityBatchResponse(
-          request,
-          response,
-          contentID
-        );
-        break;
-      case "PUT":
-        // we have update
-        throw new Error("Method not implemented.");
-        break;
-      case "DELETE":
-        // we have delete
-        throw new Error("Method not implemented.");
-        break;
-      case "GET":
-        // we have query
-        throw new Error("Method not implemented.");
-        break;
-      case "CONNECT":
-        throw new Error("Connect Method unsupported in batch.");
-        break;
-      case "HEAD":
-        throw new Error("Head Method unsupported in batch.");
-        break;
-      case "OPTIONS":
-        throw new Error("Options Method unsupported in batch.");
-        break;
-      case "TRACE":
-        throw new Error("Trace Method unsupported in batch.");
-        break;
-      case "PATCH":
-        throw new Error("Patch Method unsupported in batch.");
-        break;
-      default:
-        // this must be the merge
-        // as the merge opertion is not currently generated by autorest
-        throw new Error("Method not implemented.");
-    }
-  }
-
-  // creates the serialized entitygrouptransaction / batch response body
-  // which we return to the users batch request
-  private serializeInsertEntityBatchResponse(
-    request: BatchRequest,
-    response: Models.TableInsertEntityResponse,
-    contentID: number
-  ): string {
-    /*
-    looking to replicate this reponse:
-    Content-Type: application/http  
-    Content-Transfer-Encoding: binary  
-  
-    HTTP/1.1 204 No Content  
-    Content-ID: 1  
-    X-Content-Type-Options: nosniff  
-    Cache-Control: no-cache  
-    Preference-Applied: return-no-content  
-    DataServiceVersion: 3.0;  
-    Location: https://myaccount.table.core.windows.net/Blogs(PartitionKey='Channel_19',RowKey='1')  
-    DataServiceId: https://myaccount.table.core.windows.net/Blogs (PartitionKey='Channel_19',RowKey='1')  
-    ETag: W/"0x8D101F7E4B662C4"  
-    */
-    // ToDo: keeping my life easy to start and defaulting to "return no content"
-    let serializedResponses: string[] = [];
-    // create the initial boundary
-    serializedResponses.push("Content-Type: application/http\n");
-    serializedResponses.push("Content-Transfer-Encoding: binary \n");
-    serializedResponses.push("\n");
-    serializedResponses.push(
-      "HTTP/1.1 " + response.statusCode.toString() + " STATUS MESSAGE\n"
-    ); // ToDo: Not sure how to serialize the status message yet
-    serializedResponses.push("Content-ID: " + contentID.toString() + "\n");
-    // ToDo: not sure about other headers like cache control etc right now
-    // will need to look at this later
-    serializedResponses.push(
-      "Preference-Applied: " + response.preferenceApplied + "\n"
-    );
-    serializedResponses.push(
-      "DataServiceVersion: " + request.getHeader("DataServiceVersion") + "\n"
-    );
-    serializedResponses.push("Location: " + request.getUrl() + "\n");
-    serializedResponses.push("DataServiceId: " + request.getUrl() + "\n");
-    serializedResponses.push("ETag: " + response.eTag + "\n");
-    return serializedResponses.join();
   }
 }

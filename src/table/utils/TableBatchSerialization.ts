@@ -2,10 +2,13 @@ import { StorageError } from "../../blob/generated/artifacts/mappers";
 import BatchOperation from "../../common/BatchOperation";
 // import { BatchOperationType } from "../../common/BatchOperation";
 import { BatchType } from "../../common/BatchOperation";
+import BatchRequest from "../../common/BatchRequest";
 import BatchSubResponse from "../../common/BatchSubResponse";
+
 import IBatchSerialization from "../../common/IBatchSerialization";
 import { HttpMethod } from "../../table/generated/IRequest";
 import TableBatchOperation from "../batch/TableBatchOperation";
+import * as Models from "../generated/artifacts/models";
 
 // The semantics for entity group transactions are defined by the OData Protocol Specification.
 // https://www.odata.org/
@@ -16,9 +19,15 @@ import TableBatchOperation from "../batch/TableBatchOperation";
 // classes before giving up and doing my own implementation
 // Unit Tests are vital here!
 export class TableBatchSerialization implements IBatchSerialization {
+  // ToDo: needs to be corrected to match current implementation
+  serializeBatchResponse(batchOperations: BatchOperation[]): BatchSubResponse {
+    throw new Error("Method not implemented.");
+  }
+
   public deserializeBatchRequest(
     batchRequestsString: string
   ): TableBatchOperation[] {
+    const batchBoundary = batchRequestsString.match("(--batch_.+)+(?=\\n)+");
     let subChangeSetPrefixMatches = batchRequestsString.match(
       "(boundary=)+(changeset_.+)+(?=\\n)+"
     );
@@ -119,24 +128,20 @@ export class TableBatchSerialization implements IBatchSerialization {
 
         headers = subRequest.substring(subStringStart, subStringEnd);
 
-        const operation = new BatchOperation(BatchType.table, headers);
+        const operation = new TableBatchOperation(BatchType.table, headers);
         operation.httpMethod = requestType[0] as HttpMethod;
         operation.path = path[1];
         operation.uri = fullRequestURI[0];
         operation.jsonRequestBody = jsonBody;
+        // ToDo: this is currently inefficient, and we need to have a higher level object to contain
+        // the values which are the same across ops and responses for a batch
+        operation.changeSetBoundary = changeSetBoundary;
+        operation.batchBoundary = batchBoundary ? batchBoundary[0] : "";
         return operation;
       }
     );
 
     return batchOperations;
-  }
-
-  // Has default response for now
-  // ToDo: Figure out how to properly add the headers
-  public serializeBatchResponse(
-    batchOperations: BatchOperation[]
-  ): BatchSubResponse {
-    return new BatchSubResponse(BatchType.table, "");
   }
 
   private extractRequestHeaderString(
@@ -148,5 +153,49 @@ export class TableBatchSerialization implements IBatchSerialization {
       throw StorageError;
     }
     return headerStringMatches[2];
+  }
+
+  // creates the serialized entitygrouptransaction / batch response body
+  // which we return to the users batch request
+  public serializeInsertEntityBatchResponse(
+    request: BatchRequest,
+    response: Models.TableInsertEntityResponse,
+    contentID: number
+  ): string {
+    /*
+    looking to replicate this reponse:
+    Content-Type: application/http  
+    Content-Transfer-Encoding: binary  
+  
+    HTTP/1.1 204 No Content  
+    Content-ID: 1  
+    X-Content-Type-Options: nosniff  
+    Cache-Control: no-cache  
+    Preference-Applied: return-no-content  
+    DataServiceVersion: 3.0;  
+    Location: https://myaccount.table.core.windows.net/Blogs(PartitionKey='Channel_19',RowKey='1')  
+    DataServiceId: https://myaccount.table.core.windows.net/Blogs (PartitionKey='Channel_19',RowKey='1')  
+    ETag: W/"0x8D101F7E4B662C4"  
+    */
+    // ToDo: keeping my life easy to start and defaulting to "return no content"
+    let serializedResponses: string = "";
+    // create the initial boundary
+    serializedResponses += "Content-Type: application/http\n";
+    serializedResponses += "Content-Transfer-Encoding: binary \n";
+    serializedResponses += "\n";
+    serializedResponses +=
+      "HTTP/1.1 " + response.statusCode.toString() + " STATUS MESSAGE\n";
+    // ToDo: Not sure how to serialize the status message yet
+    serializedResponses += "Content-ID: " + contentID.toString() + "\n";
+    // ToDo: not sure about other headers like cache control etc right now
+    // will need to look at this later
+    serializedResponses +=
+      "Preference-Applied: " + response.preferenceApplied + "\n";
+    serializedResponses +=
+      "DataServiceVersion: " + request.getHeader("DataServiceVersion") + "\n";
+    serializedResponses += "Location: " + request.getUrl() + "\n";
+    serializedResponses += "DataServiceId: " + request.getUrl() + "\n";
+    serializedResponses += "ETag: " + response.eTag + "\n";
+    return serializedResponses;
   }
 }
