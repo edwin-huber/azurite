@@ -541,7 +541,7 @@ export default class TableHandler extends BaseHandler implements ITableHandler {
     const tableCtx = new TableStorageContext(context);
     const accountName = tableCtx.account;
     let tableName = tableCtx.tableName!; // Get tableName from context
-    if (tableName == "$batch") {
+    if (tableName === "$batch") {
       tableName = _tableName;
     }
     if (

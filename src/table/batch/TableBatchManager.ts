@@ -1,11 +1,15 @@
 import BatchRequest from "../../common/BatchRequest";
-import { TableBatchSerialization } from "../utils/TableBatchSerialization";
-import TableBatchOperation from "./TableBatchOperation";
 import BatchTableInsertEntityOptionalParams from "../batch/batch.models";
 import TableStorageContext from "../context/TableStorageContext";
 import Context from "../generated/Context";
 import TableHandler from "../handlers/TableHandler";
+import { TableBatchSerialization } from "../utils/TableBatchSerialization";
+import TableBatchOperation from "./TableBatchOperation";
 
+// Currently there is a single distinct and concrete implementation of batch /
+// entity group operations for the table api.
+// it might be possible to share code between this and the blob batch api, but this
+// has not yet been validated.
 export default class TableBatchManager {
   private batchOperations: TableBatchOperation[] = [];
   private requests: BatchRequest[] = [];
@@ -18,10 +22,7 @@ export default class TableBatchManager {
     this.parentHandler = handler;
   }
 
-  /*
-   * processBatchRequestAndSerializeResponse
-   * Takes batchRequest body, deserializes requests, submits to handlers, then returns serialized response
-   */
+  // Takes batchRequest body, deserializes requests, submits to handlers, then returns serialized response
   public async processBatchRequestAndSerializeResponse(
     batchRequestBody: string
   ): Promise<string> {
@@ -32,18 +33,12 @@ export default class TableBatchManager {
     return this.serializeResponses();
   }
 
-  /**
-   * deserializeBatchRequests
-   */
   private deserializeBatchRequests(batchRequestBody: string): void {
     this.batchOperations = this.serialization.deserializeBatchRequest(
       batchRequestBody
     );
   }
 
-  /**
-   * submitRequestsToHandlers
-   */
   private async submitRequestsToHandlers(): Promise<void> {
     this.batchOperations.forEach(operation => {
       const request: BatchRequest = new BatchRequest(operation);
@@ -52,7 +47,7 @@ export default class TableBatchManager {
 
     let contentID = 1; // contentID starts at 1 for batch
     if (this.requests.length > 0) {
-      for (let singleReq of this.requests) {
+      for (const singleReq of this.requests) {
         try {
           singleReq.response = await this.routeAndDispatchBatchRequest(
             singleReq,
@@ -67,15 +62,11 @@ export default class TableBatchManager {
     }
   }
 
-  /**
-   * serializeResponses
-   * https://docs.microsoft.com/en-us/rest/api/storageservices/performing-entity-group-transactions#json-versions-2013-08-15-and-later-2
-   */
+  // see Link below for details of response format
+  // tslint:disable-next-line: max-line-length
+  // https://docs.microsoft.com/en-us/rest/api/storageservices/performing-entity-group-transactions#json-versions-2013-08-15-and-later-2
   private serializeResponses(): string {
     let responseString: string = "";
-    // Now we need to serialize the response
-    // We currently use entry at position 0 for all request wide values
-    // this needs to move to an encapsulating object.
     // based on research, a stringbuilder is only worth doing with 1000s of string ops
     const batchBoundary = this.serialization.batchBoundary.replace(
       "batch",
@@ -87,22 +78,20 @@ export default class TableBatchManager {
       "changesetresponse"
     );
 
-    // first add:
     // --batchresponse_e69b1c6c-62ff-471e-ab88-9a4aeef0a880
     responseString += batchBoundary + "\n";
-    // (currently static header) ToDo: Insert correct headers
+    // (currently static header) ToDo: Validate if we need to correct headers via tests
     // Content-Type: multipart/mixed; boundary=changesetresponse_a6253244-7e21-42a8-a149-479ee9e94a25
     responseString +=
       "Content-Type: multipart/mixed; boundary=" + changesetBoundary + "\n";
 
     changesetBoundary = "\n--" + changesetBoundary;
     this.requests.forEach(request => {
-      // need to add the boundaries in here like
+      // need to add the boundaries
       // --changesetresponse_a6253244-7e21-42a8-a149-479ee9e94a25
       responseString += changesetBoundary;
 
       responseString += request.response;
-      // ToDo: Why is Etag Missing? / Undefined
     });
 
     // --changesetresponse_a6253244-7e21-42a8-a149-479ee9e94a25--
@@ -135,7 +124,7 @@ export default class TableBatchManager {
       case "POST":
         // INSERT: we are inserting an entity
         // POST	https://myaccount.table.core.windows.net/mytable
-        let params: BatchTableInsertEntityOptionalParams = new BatchTableInsertEntityOptionalParams(
+        const params: BatchTableInsertEntityOptionalParams = new BatchTableInsertEntityOptionalParams(
           request
         );
 

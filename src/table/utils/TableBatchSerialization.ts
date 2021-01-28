@@ -1,13 +1,12 @@
-import { exception } from "console";
 import { StorageError } from "../../blob/generated/artifacts/mappers";
-import BatchOperation from "../../common/BatchOperation";
+// import BatchOperation from "../../common/BatchOperation";
 // import { BatchOperationType } from "../../common/BatchOperation";
 import { BatchType } from "../../common/BatchOperation";
 import BatchRequest from "../../common/BatchRequest";
-import BatchSubResponse from "../../common/BatchSubResponse";
+// import BatchSubResponse from "../../common/BatchSubResponse";
 
-import IBatchSerialization from "../../common/IBatchSerialization";
 import { HttpMethod } from "../../table/generated/IRequest";
+import { BatchSerialization } from "../batch/BatchSerialization";
 import TableBatchOperation from "../batch/TableBatchOperation";
 import * as Models from "../generated/artifacts/models";
 
@@ -19,49 +18,7 @@ import * as Models from "../generated/artifacts/models";
 // I went down a long rathole trying to get this to work using the existing dispatch and serialization
 // classes before giving up and doing my own implementation
 // Tests are vital here!
-export class TableBatchSerialization implements IBatchSerialization {
-  public batchBoundary: string = "";
-  public changesetBoundary: string = "";
-
-  // ToDo: needs to be corrected to match current implementation
-  public serializeBatchResponse(
-    batchOperations: BatchOperation[]
-  ): BatchSubResponse {
-    throw new Error("Method not implemented.");
-  }
-
-  public extractBatchBoundary(batchRequestsString: string): void {
-    const batchBoundaryMatch = batchRequestsString.match(
-      "(--batch_.+)+(?=\\n)+"
-    );
-    if (null != batchBoundaryMatch) {
-      this.batchBoundary = batchBoundaryMatch[0];
-    } else {
-      throw exception("no batch boiundary found in request");
-    }
-  }
-
-  // ToDo: improve RegEx
-  public extractChangeSetBoundary(batchRequestsString: string): void {
-    let subChangeSetPrefixMatches = batchRequestsString.match(
-      "(boundary=)+(changeset_.+)+(?=\\n)+"
-    );
-
-    if (subChangeSetPrefixMatches != null) {
-      this.changesetBoundary = subChangeSetPrefixMatches[2];
-    } else {
-      // we need to see if this is a single query batch operation
-      // whose format is different! (as we only support a single query per batch)
-      // ToDo: do we need to check for GET HTTP verb?
-      subChangeSetPrefixMatches = batchRequestsString.match(/(--batch_\w+)/);
-      if (subChangeSetPrefixMatches != null) {
-        this.changesetBoundary = subChangeSetPrefixMatches[1];
-      } else {
-        throw StorageError;
-      }
-    }
-  }
-
+export class TableBatchSerialization extends BatchSerialization {
   public deserializeBatchRequest(
     batchRequestsString: string
   ): TableBatchOperation[] {
@@ -167,26 +124,11 @@ export class TableBatchSerialization implements IBatchSerialization {
 
   // creates the serialized entitygrouptransaction / batch response body
   // which we return to the users batch request
-  public serializeInsertEntityBatchResponse(
+  public serializeTableInsertEntityBatchResponse(
     request: BatchRequest,
     response: Models.TableInsertEntityResponse,
     contentID: number
   ): string {
-    /*
-    looking to replicate this reponse:
-    Content-Type: application/http
-    Content-Transfer-Encoding: binary
-
-    HTTP/1.1 204 No Content
-    Content-ID: 1
-    X-Content-Type-Options: nosniff
-    Cache-Control: no-cache
-    Preference-Applied: return-no-content
-    DataServiceVersion: 3.0;
-    Location: https://myaccount.table.core.windows.net/Blogs(PartitionKey='Channel_19',RowKey='1')
-    DataServiceId: https://myaccount.table.core.windows.net/Blogs (PartitionKey='Channel_19',RowKey='1')
-    ETag: W/"0x8D101F7E4B662C4"
-    */
     // ToDo: keeping my life easy to start and defaulting to "return no content"
     let serializedResponses: string = "";
     // create the initial boundary
