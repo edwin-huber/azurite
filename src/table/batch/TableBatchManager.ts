@@ -102,11 +102,8 @@ export default class TableBatchManager {
     return responseString;
   }
 
-  /*
-   * routeAndDispatchBatchRequest
-   * Routes and dispatches single operations against the table handler and stores
-   * the serialized result
-   */
+  // Routes and dispatches single operations against the table handler and stores
+  // the serialized result
   private async routeAndDispatchBatchRequest(
     request: BatchRequest,
     context: Context,
@@ -133,7 +130,7 @@ export default class TableBatchManager {
           params,
           batchContextClone
         );
-        return this.serialization.serializeInsertEntityBatchResponse(
+        return this.serialization.serializeTableInsertEntityBatchResponse(
           request,
           response,
           contentID

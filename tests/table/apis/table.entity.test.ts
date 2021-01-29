@@ -17,19 +17,22 @@ import {
 configLogger(false);
 
 // Create Entity for tests
-function createBasicEntityForTest() {
-  return {
-    PartitionKey: eg.String("part1"),
-    RowKey: eg.String(getUniqueName("row")),
-    myValue: eg.String("value1")
-  };
+function createBasicEntityForTest(): TestEntity {
+  return new TestEntity("part1", getUniqueName("row"), "value1");
 }
 
-// const wildCardEtag = {
-//   ".metadata": {
-//     etag: "*" // forcing unconditional etag match to delete
-//   }
-// };
+class TestEntity {
+  public PartitionKey: Azure.TableUtilities.entityGenerator.EntityProperty<
+    string
+  >;
+  public RowKey: Azure.TableUtilities.entityGenerator.EntityProperty<string>;
+  public myValue: Azure.TableUtilities.entityGenerator.EntityProperty<string>;
+  constructor(part: string, row: string, value: string) {
+    this.PartitionKey = eg.String(part);
+    this.RowKey = eg.String(row);
+    this.myValue = eg.String(value);
+  }
+}
 
 const eg = Azure.TableUtilities.entityGenerator;
 
@@ -477,55 +480,65 @@ describe("table Entity APIs test", () => {
           done();
         } else {
           assert.equal(updateResponse.statusCode, 202); // No content
-          // TODO When QueryEntity is done - validate Entity Properties
-          done();
+          // TODO When QueryEntity is done - validate Entity Properties like:
+          // tableService.retrieveEntity<TestEntity>(
+          //   tableName,
+          //   batchEntity1.PartitionKey._,
+          //   batchEntity1.RowKey._,
+          //   (error, result) => {
+          //     const entity: TestEntity = result;
+          //     assert.equal(entity.myValue._, batchEntity1.myValue._);
+          //     done();
+          //   }
+          // );
         }
       }
     );
   });
 
-  it("Simple batch test: Query non existing entity via a batch, @loki", done => {
-    requestOverride.headers = {
-      Prefer: "return-content",
-      accept: "application/json;odata=fullmetadata"
-    };
-    const batchEntity1 = createBasicEntityForTest();
+  // Query entity it not yet implemented
+  // it("Simple batch test: Query non existing entity via a batch, @loki", done => {
+  //   requestOverride.headers = {
+  //     Prefer: "return-content",
+  //     accept: "application/json;odata=fullmetadata"
+  //   };
+  //   const batchEntity1 = createBasicEntityForTest();
 
-    // retrieve is the only operation in the batch
-    const entityBatch: Azure.TableBatch = new Azure.TableBatch();
-    entityBatch.retrieveEntity(
-      batchEntity1.PartitionKey._,
-      batchEntity1.RowKey._,
-      { echoContent: true }
-    );
+  //   // retrieve is the only operation in the batch
+  //   const entityBatch: Azure.TableBatch = new Azure.TableBatch();
+  //   entityBatch.retrieveEntity(
+  //     batchEntity1.PartitionKey._,
+  //     batchEntity1.RowKey._,
+  //     { echoContent: true }
+  //   );
 
-    tableService.executeBatch(
-      tableName,
-      entityBatch,
-      (updateError, updateResult, updateResponse) => {
-        if (updateError) {
-          assert.ifError(updateError);
-          done();
-        } else {
-          assert.equal(updateResponse.statusCode, 202); // No content
-          // TODO When QueryEntity is done - validate Entity Properties
-          tableService.retrieveEntity(
-            tableName,
-            batchEntity1.PartitionKey._,
-            batchEntity1.RowKey._,
-            (error, result) => {
-              if (error) {
-                assert.ifError(error);
-              } else if (result) {
-                assert.equal(result, null);
-              }
-              done();
-            }
-          );
-        }
-      }
-    );
-  });
+  //   tableService.executeBatch(
+  //     tableName,
+  //     entityBatch,
+  //     (updateError, updateResult, updateResponse) => {
+  //       if (updateError) {
+  //         assert.ifError(updateError);
+  //         done();
+  //       } else {
+  //         assert.equal(updateResponse.statusCode, 202); // No content
+  //         // TODO When QueryEntity is done - validate Entity Properties
+  //         tableService.retrieveEntity(
+  //           tableName,
+  //           batchEntity1.PartitionKey._,
+  //           batchEntity1.RowKey._,
+  //           (error, result) => {
+  //             if (error) {
+  //               assert.ifError(error);
+  //             } else if (result) {
+  //               assert.equal(result, null);
+  //             }
+  //             done();
+  //           }
+  //         );
+  //       }
+  //     }
+  //   );
+  // });
 
   it("Simple batch test: insert and Merge entity via a batch, @loki", done => {
     requestOverride.headers = {
